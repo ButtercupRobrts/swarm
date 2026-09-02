@@ -20,14 +20,14 @@ const frontPageTemplate = `<!DOCTYPE html>
     <meta property="og:type" content="website">
     <meta property="og:title" content="{{.RelayName}} - Nostr Relay & Blossom Server">
     <meta property="og:description" content="{{.RelayDescription}} - Team-based Nostr relay with Blossom file storage">
-    <meta property="og:image" content="https://swarm.hivetalk.org/public/TeamHive.png">
+    <meta property="og:image" content="https://{{.TeamDomain}}/public/TeamHive.png">
     <meta property="og:url" content="https://{{.TeamDomain}}">
 
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{{.RelayName}} - Nostr Relay & Blossom Server">
     <meta name="twitter:description" content="{{.RelayDescription}} - Team-based Nostr relay with Blossom file storage">
-    <meta name="twitter:image" content="https://swarm.hivetalk.org/public/TeamHive.png">
+    <meta name="twitter:image" content="https://{{.TeamDomain}}/public/TeamHive.png">
 
     <style>
         * {
@@ -127,6 +127,7 @@ const frontPageTemplate = `<!DOCTYPE html>
         .method.get { background: #48bb78; color: white; }
         .method.post { background: #ed8936; color: white; }
         .method.put { background: #4299e1; color: white; }
+        .method.delete { background: #e53e3e; color: white; }
         .method.websocket { background: #805ad5; color: white; }
 
         .path {
@@ -220,14 +221,14 @@ const frontPageTemplate = `<!DOCTYPE html>
             <div class="endpoint">
                 <div class="endpoint-title">
                     <span class="method get">WEB APP</span>
-                    <span class="path">/bouquet/</span>
+                    <span class="path">https://bouquet.slidestr.net/</span>
                 </div>
                 <div class="description">
                     Modern web interface for managing your blobs. Upload files, organize content,
                     and publish to Nostr with rich metadata support including audio, video, and images.
                 </div>
                 <div style="margin-top: 1rem; text-align: center;">
-                    <a href="/bouquet/" target="_blank" class="btn" style="background: #be185d; color: white; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: 8px; display: inline-block; font-weight: bold;">
+                    <a href="https://bouquet.slidestr.net/" target="_blank" class="btn" style="background: #be185d; color: white; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: 8px; display: inline-block; font-weight: bold;">
                         🚀 Launch Bouquet Client
                     </a>
                 </div>
@@ -277,6 +278,43 @@ const frontPageTemplate = `<!DOCTYPE html>
                 </div>
                 <div class="description">
                     Nostr relay information document (NIP-11) containing relay metadata and policies.
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📅 Scheduled Notes API</h2>
+
+            <div class="endpoint">
+                <div class="endpoint-title">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/scheduler/schedule</span>
+                </div>
+                <div class="description">
+                    Schedule a signed Nostr event for future publication. Requires NIP-98 authentication.
+                    Send a JSON body with <code>signed_event</code>, <code>relays</code>, and <code>scheduled_for</code> (ISO 8601 timestamp).
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-title">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/scheduler/list</span>
+                </div>
+                <div class="description">
+                    List all scheduled posts for the authenticated user. Requires NIP-98 authentication.
+                    Returns an array of scheduled posts with their status (pending, published, or failed).
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-title">
+                    <span class="method delete">DELETE</span>
+                    <span class="path">/api/scheduler/delete?id={id}</span>
+                </div>
+                <div class="description">
+                    Delete a pending scheduled post by its ID. Requires NIP-98 authentication.
+                    Only the user who created the scheduled post can delete it.
                 </div>
             </div>
         </div>
@@ -350,6 +388,10 @@ const frontPageTemplate = `<!DOCTYPE html>
                 <div class="status-item">
                     <div class="status-label">Access Control</div>
                     <div class="status-value">Team Members Only</div>
+                    <div class="status-detail"><a href="/dashboard"  class="btn" 
+                    style="background: #2e6fd0ff; color: white; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: 8px; display: inline-block; font-weight: bold;">
+                    Dashboard</a>
+                    </div>
                 </div>
                 {{if .AllowedKindsStr}}
                 <div class="status-item">
@@ -406,7 +448,7 @@ func setupFrontPageHandler(relay *khatru.Relay, config Config) {
 			BlossomEnabled:   config.BlossomEnabled,
 			MaxUploadSizeMB:  config.MaxUploadSizeMB,
 			WebSocketURL:     *config.WebSocketURL,
-			WellKnownURL:     "https://" + config.NPUBDomain + "/.well-known/nostr.json",
+			WellKnownURL:     "https://" + config.NPUBDomain + "/public/.well-known/nostr.json",
 		}
 
 		if config.BlossomURL != nil {

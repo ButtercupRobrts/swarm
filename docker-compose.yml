@@ -45,6 +45,12 @@ services:
       # Mirror endpoint (blank = disabled)
       ALLOWED_MIRROR_HOSTS: ${ALLOWED_MIRROR_HOSTS:-}
       
+      # Rate limiting (unset/empty = disabled)
+      PUBKEY_RATE_LIMIT: ${PUBKEY_RATE_LIMIT:-5}
+      IP_RATE_LIMIT: ${IP_RATE_LIMIT:-10}
+      CONN_RATE_LIMIT: ${CONN_RATE_LIMIT:-2}
+      QUERY_RATE_LIMIT: ${QUERY_RATE_LIMIT:-100}
+      
       # S3/Tigris Storage (optional - defaults to filesystem)
       STORAGE_BACKEND: ${STORAGE_BACKEND:-filesystem}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
@@ -54,10 +60,46 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
-      - ./public:/app/public:ro
+      - public_data:/app/public
       - badger_data:/app/db
       - blossom_data:/app/blossom
+      - backup_data:/app/backups
+    # Zeabur-specific labels for automatic volume creation
+    labels:
+      zeabur.service.name: "swarm-relay"
+      zeabur.service.type: "docker"
+      zeabur.service.port: "3334"
+      zeabur.volume.badger_data.size: "1Gi"
+      zeabur.volume.badger_data.type: "persistent"
+      zeabur.volume.blossom_data.size: "10Gi"
+      zeabur.volume.blossom_data.type: "persistent"
+      zeabur.volume.backup_data.size: "5Gi"
+      zeabur.volume.backup_data.type: "persistent"
+      zeabur.volume.public_data.size: "1Gi"
+      zeabur.volume.public_data.type: "persistent"
 
 volumes:
   badger_data:
+    labels:
+      zeabur.volume.name: "swarm-db"
+      zeabur.volume.mount-path: "/app/db"
+      zeabur.volume.size: "1Gi"
+      zeabur.volume.type: "persistent"
   blossom_data:
+    labels:
+      zeabur.volume.name: "swarm-blossom"
+      zeabur.volume.mount-path: "/app/blossom"
+      zeabur.volume.size: "10Gi"
+      zeabur.volume.type: "persistent"
+  backup_data:
+    labels:
+      zeabur.volume.name: "swarm-backups"
+      zeabur.volume.mount-path: "/app/backups"
+      zeabur.volume.size: "5Gi"
+      zeabur.volume.type: "persistent"
+  public_data:
+    labels:
+      zeabur.volume.name: "swarm-public"
+      zeabur.volume.mount-path: "/app/public"
+      zeabur.volume.size: "1Gi"
+      zeabur.volume.type: "persistent"
