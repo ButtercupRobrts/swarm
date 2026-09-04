@@ -51,6 +51,13 @@ primary_region = 'sjc'
   # Mirror endpoint (blank = disabled)
   ALLOWED_MIRROR_HOSTS = ""
 
+# Persistent volume for scheduler state and zap analytics cache.
+# Required when DB_ENGINE=postgres so /app/db survives redeploy.
+# Create before first deploy: fly volumes create swarm_data --size 1
+[mount]
+  source = "swarm_data"
+  destination = "/app/db"
+
 [http_service]
   internal_port = 3334
   force_https = true
