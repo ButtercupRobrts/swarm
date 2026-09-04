@@ -2,6 +2,12 @@
 
 This document lists all environment variables that can be configured for the Swarm relay.
 
+## Development Environment
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DOCKER_ENV` | Set to `true` when running in Docker, `false` for local development | `false` |
+
 ## Required Variables
 
 | Variable | Description | Example |
@@ -21,14 +27,14 @@ This document lists all environment variables that can be configured for the Swa
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_ENGINE` | Database engine: `badger`, `lmdb`, or `postgresql` | `badger` |
-| `DB_PATH` | Path for local database storage | `db/` |
+| `DB_ENGINE` | Database engine: `badger`, `lmdb`, or `postgresql` | `postgres` |
+| `DB_PATH` | Path for local database storage (badger/lmdb only) | `db/` |
 
 ### PostgreSQL (when `DB_ENGINE=postgresql`)
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | Full PostgreSQL connection URL (alternative to individual vars) |
+| `DATABASE_URL` | Full PostgreSQL connection URL (takes precedence over individual vars) |
 | `POSTGRES_USER` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `POSTGRES_DB` | PostgreSQL database name |
@@ -75,6 +81,16 @@ Use these when you want to store media in S3-compatible storage instead of the l
 **Public URL (`S3_PUBLIC_URL`):**
 - `https://fly.storage.tigris.dev/your-bucket`
 
+## NIP-05 Service Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NIP05_PATH` | Path to nostr.json file for NIP-05 registrations | `public/.well-known/nostr.json` |
+
+**Path Examples:**
+- **Local Development:** `public/.well-known/nostr.json`
+- **Docker/Zeabur:** `/app/public/.well-known/nostr.json`
+
 ## Event Kind Filtering
 
 | Variable | Description | Default |
@@ -82,11 +98,22 @@ Use these when you want to store media in S3-compatible storage instead of the l
 | `ALLOWED_KINDS` | Comma-separated list of event kinds allowed for team members | `""` (all kinds) |
 | `PUBLIC_ALLOWED_KINDS` | Comma-separated list of event kinds allowed for public users | `""` (none) |
 
+## Spam Rate Limiting (Optional)
+
+If a rate-limit variable is unset, empty, invalid, or non-positive, that specific limiter is disabled.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUBKEY_RATE_LIMIT` | Max events per minute per pubkey (non-team users) | disabled |
+| `IP_RATE_LIMIT` | Max events per minute per IP | disabled |
+| `CONN_RATE_LIMIT` | Max websocket connections per 2 minutes per IP | disabled |
+| `QUERY_RATE_LIMIT` | Max queries per minute per IP | disabled |
+
 ## Trusted Client Override
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TRUSTED_CLIENT_NAME` | Client tag name to trust (e.g., `"bouquet"`) | `""` |
+| `TRUSTED_CLIENT_NAME` | Client tag name to trust | `""` |
 | `TRUSTED_CLIENT_KINDS` | Comma-separated kinds allowed for trusted client, or `"*"` for all | `""` |
 
 ---
@@ -95,11 +122,21 @@ Use these when you want to store media in S3-compatible storage instead of the l
 
 ### Minimal Local Setup
 ```env
+DOCKER_ENV=false
 RELAY_NAME="My Relay"
 RELAY_PUBKEY="your-hex-pubkey"
 RELAY_DESCRIPTION="My personal relay"
 DB_ENGINE=badger
 DB_PATH=db/
+NIP05_PATH=public/.well-known/nostr.json
+```
+
+### Production PostgreSQL Setup
+```env
+DOCKER_ENV=true
+DB_ENGINE=postgres
+DATABASE_URL=postgres://swarm:password@postgres:5432/relay?sslmode=disable
+NIP05_PATH=/app/public/.well-known/nostr.json
 ```
 
 ### With Blossom (Filesystem)

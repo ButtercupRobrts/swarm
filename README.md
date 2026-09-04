@@ -1,5 +1,7 @@
 # Swarm: Nostr Team Relay Software
 
+[![Deployed on Zeabur](https://zeabur.com/deployed-on-zeabur-dark.svg)](https://zeabur.com/referral?referralCode=bitkarrot&utm_source=bitkarrot&utm_campaign=oss)
+
 This relay software provides a Nostr relay to a team.  This is a fork of the bitvora [team-relay](https://github.com/bitvora/team-relay) with  modifications for Swarm.hivetalk.org 
 
 In the .env file, the team domain is used to reject non team members, only members in nostr.json are allowed for the specified team domain.
@@ -30,7 +32,7 @@ Additional features we added for production use:
    - Separate configuration for public vs team member allowed kinds
 - **Frontend Enhancements**
    - Added front page with relay and blossom information
-   - Added Bouquet integration, to enable media upload and syncing with other relays
+   - External Bouquet link for media upload and syncing with other relays
    - Curator client integration for enhanced content management
 - **Docker Support**
    - Full containerization support with Dockerfile
@@ -191,21 +193,6 @@ For a complete list of all environment variables, see [ENV_VARIABLES.md](ENV_VAR
 
 ## 🚀 Quick Setup
 
-### 1. Build the Bouquet Client
-
-```bash
-# Option A: Use the build script (recommended)
-./build-bouquet.sh
-
-# Option B: Manual build
-cd clients/bouquet
-pnpm install
-pnpm run build:integration
-cd ../..
-```
-
-### 2. Start the Go Server
-
 ```bash
 # Build and run the Go server
 go build -o swarm
@@ -218,8 +205,6 @@ If any issues with building for lmdb on ubuntu:
 sudo apt-get update
 sudo apt-get install -y liblmdb-dev build-essential
 ```
-
-More details about Bouquet integration can be found in the [BOUQUET_INTEGRATION.md](BOUQUET_INTEGRATION.md) file.
 
 ## Running Docker
 
@@ -247,7 +232,7 @@ If you change `RELAY_PORT` in `.env`, update the `-p` mapping accordingly (e.g. 
 
 ### Run with docker-compose (recommended)
 
-The `docker-compose.yml` includes both Postgres and the Swarm relay. Environment variables are read from a `.env` file with sensible defaults.
+The `docker-compose.yml` runs the Swarm relay using the badger database engine (no external database required). Environment variables are read from a `.env` file with sensible defaults.
 
 ```bash
 # 1. Copy and customize environment variables
