@@ -45,6 +45,11 @@ services:
       # Mirror endpoint (blank = disabled)
       ALLOWED_MIRROR_HOSTS: ${ALLOWED_MIRROR_HOSTS:-}
       
+      # Session secret for dashboard cookies. If unset, a random per-process
+      # secret is generated and sessions will not survive restarts. Set this
+      # to a stable value for persistent dashboard sessions. (B6 fix)
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      
       # Rate limiting (unset/empty = disabled)
       PUBKEY_RATE_LIMIT: ${PUBKEY_RATE_LIMIT:-5}
       IP_RATE_LIMIT: ${IP_RATE_LIMIT:-10}

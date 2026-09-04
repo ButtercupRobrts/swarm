@@ -70,7 +70,8 @@ type Config struct {
 	S3Region       string
 	S3PublicURL    string
 	// SessionSecret is used to HMAC-sign dashboard session cookies.
-	// Falls back to RelayPubkey if SESSION_SECRET env var is not set.
+	// If SESSION_SECRET is not set, a random 32-byte secret is generated
+	// per process; sessions will not survive restarts in that case.
 	SessionSecret string
 }
 
@@ -342,8 +343,10 @@ func main() {
 
 	setupConvertHandlers(relay, config)
 
-	// Setup Scheduler - use configured DB path
-	schedulerDataPath := *config.DBPath
+	// Setup Scheduler. Store its state inside the persistent /app/db volume
+	// (always mounted via zeabur.yaml) so scheduled posts survive redeploy
+	// even when DB_ENGINE=postgresql. (B4 fix)
+	schedulerDataPath := filepath.Join(*config.DBPath, "scheduler")
 	scheduler, err := NewScheduler(schedulerDataPath)
 	if err != nil {
 		log.Printf("Failed to initialize scheduler: %v", err)
@@ -739,7 +742,7 @@ func main() {
 
 			// Check imeta tags: ['imeta', 'url https://...', 'm image/jpeg', ...]
 			for _, tag := range evt.Tags {
-				if tag[0] == "imeta" {
+				if len(tag) >= 1 && tag[0] == "imeta" {
 					for _, part := range tag[1:] {
 						if strings.HasPrefix(part, "url ") {
 							url := strings.TrimSpace(part[4:])
@@ -982,6 +985,11 @@ func main() {
 				},
 			},
 		}
+
+		// Close idle connections on this per-request Transport so sockets
+		// and goroutines do not accumulate across many /mirror calls.
+		// (B1 fix: resource leak introduced by the SSRF-safe custom client)
+		defer mirrorClient.CloseIdleConnections()
 
 		resp, err := mirrorClient.Get(validatedURL)
 		if err != nil {
@@ -2388,16 +2396,28 @@ func isTeamPubkey(pk string) bool {
 // readBlossomAuth reads and validates a NIP-98 Authorization header from the
 // request. Returns the authenticated event or nil if no valid auth is present.
 // getRequestURL reconstructs the full request URL including scheme, host, and path.
-// Handles X-Forwarded-Proto for reverse proxies. Used by NIP-98 auth verification.
+// This is the single source of truth for NIP-98/Blossom URL verification so that
+// /login, checkAuth and readBlossomAuth cannot drift apart. (F8 fix)
+//
+// X-Forwarded-Proto is whitelisted to http/https so a client cannot inject an
+// arbitrary scheme. X-Forwarded-Host is only trusted when DOCKER_ENV=true (i.e.
+// the relay runs behind a proxy that overwrites it); when the relay is exposed
+// directly the header is ignored so it cannot be spoofed.
 func getRequestURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if fwdProto := r.Header.Get("X-Forwarded-Proto"); fwdProto != "" {
+	if fwdProto := r.Header.Get("X-Forwarded-Proto"); fwdProto == "http" || fwdProto == "https" {
 		scheme = fwdProto
 	}
-	return scheme + "://" + r.Host + r.URL.RequestURI()
+	host := r.Host
+	if os.Getenv("DOCKER_ENV") == "true" {
+		if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
+			host = fwdHost
+		}
+	}
+	return scheme + "://" + host + r.URL.RequestURI()
 }
 
 func readBlossomAuth(r *http.Request) (*nostr.Event, error) {
@@ -2888,27 +2908,37 @@ func setupDashboardHandlers(relay *khatru.Relay, config Config) {
 			return
 		}
 
-		// Check expiration tag
-		expirationTag := evt.Tags.GetFirst([]string{"expiration"})
-		if expirationTag == nil {
-			http.Error(w, "Missing expiration tag", http.StatusBadRequest)
+		// Verify freshness: reject events older than 60 seconds or created in
+		// the future. Without this, a captured login event can be replayed to
+		// mint new sessions until its self-chosen expiration. (V4 fix)
+		now := nostr.Now()
+		if evt.CreatedAt > now+60 {
+			http.Error(w, "Auth event created in the future", http.StatusBadRequest)
 			return
 		}
-		expiration, _ := strconv.ParseInt((*expirationTag)[1], 10, 64)
-		if nostr.Timestamp(expiration) < nostr.Now() {
+		if now-evt.CreatedAt > 60 {
+			http.Error(w, "Auth event too old", http.StatusBadRequest)
+			return
+		}
+
+		// Check expiration tag (guard against single-element tag panic)
+		expirationTag := evt.Tags.GetFirst([]string{"expiration"})
+		if expirationTag == nil || len(*expirationTag) < 2 {
+			http.Error(w, "Missing or malformed expiration tag", http.StatusBadRequest)
+			return
+		}
+		expiration, err := strconv.ParseInt((*expirationTag)[1], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid expiration value", http.StatusBadRequest)
+			return
+		}
+		if nostr.Timestamp(expiration) < now {
 			http.Error(w, "Auth event expired", http.StatusBadRequest)
 			return
 		}
 
-		// Verify the u tag matches the login URL
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if fwdProto := r.Header.Get("X-Forwarded-Proto"); fwdProto != "" {
-			scheme = fwdProto
-		}
-		expectedURL := scheme + "://" + r.Host + r.URL.RequestURI()
+		// Verify the u tag matches the login URL (F8 fix: shared helper)
+		expectedURL := getRequestURL(r)
 		uTag := evt.Tags.GetFirst([]string{"u", ""})
 		if uTag == nil || len(*uTag) < 2 || (*uTag)[1] != expectedURL {
 			log.Printf("Dashboard login denied: URL mismatch in auth event")

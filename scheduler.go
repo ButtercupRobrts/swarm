@@ -377,18 +377,26 @@ func (s *Scheduler) publishPost(post *ScheduledPost) {
 	successCount := 0
 	var lastErr error
 
-	// Publish to local relay first
+	// Publish to local relay first.
+	// khatru Relay.AddEvent returns (skipBroadcast, writeError):
+	//   (false, nil) = new event stored and broadcast
+	//   (true,  nil) = duplicate (ErrDupEvent), already on relay
+	//   (false, err) = rejected or store error
+	// Both nil-error cases mean the event is on the relay, so count as
+	// success. Previously only `added=true` was counted, which inverted the
+	// semantics: every brand-new local publish was marked as failure while
+	// only duplicates were marked success. (B8 fix)
 	if relay != nil {
-		added, err := relay.AddEvent(ctx, post.SignedEvent)
+		_, err := relay.AddEvent(ctx, post.SignedEvent)
 		if err != nil {
 			logWithFields("error", "Failed to add event to local relay", map[string]interface{}{
 				"post_id": post.ID,
 				"error":   err.Error(),
 			})
 			lastErr = err
-		} else if added {
+		} else {
 			successCount++
-			logWithFields("info", "Added event to local relay", map[string]interface{}{
+			logWithFields("info", "Event present on local relay", map[string]interface{}{
 				"post_id": post.ID,
 			})
 		}
@@ -550,6 +558,27 @@ func (s *Scheduler) HandleSchedule(w http.ResponseWriter, r *http.Request) {
 			"error":       err.Error(),
 		})
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate scheduled_for. A zero/past time would publish immediately on
+	// the next tick (B12 fix); a date far in the future would be stored
+	// indefinitely. Require a future time within one year.
+	now := time.Now()
+	if req.ScheduledFor.IsZero() || !req.ScheduledFor.After(now) {
+		logWithFields("warn", "Invalid scheduled_for: must be a future time", map[string]interface{}{
+			"user_pubkey":    userPubkey,
+			"scheduled_for":  req.ScheduledFor,
+		})
+		http.Error(w, "scheduled_for must be a future time", http.StatusBadRequest)
+		return
+	}
+	if req.ScheduledFor.After(now.AddDate(1, 0, 0)) {
+		logWithFields("warn", "Invalid scheduled_for: more than one year ahead", map[string]interface{}{
+			"user_pubkey":    userPubkey,
+			"scheduled_for":  req.ScheduledFor,
+		})
+		http.Error(w, "scheduled_for cannot be more than one year in the future", http.StatusBadRequest)
 		return
 	}
 
@@ -780,15 +809,10 @@ func checkAuth(r *http.Request) (string, error) {
 		return "", fmt.Errorf("invalid event signature")
 	}
 
-	// Reconstruct full request URL for comparison
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if fwdProto := r.Header.Get("X-Forwarded-Proto"); fwdProto != "" {
-		scheme = fwdProto
-	}
-	fullURL := scheme + "://" + r.Host + r.URL.RequestURI()
+	// Reconstruct full request URL for comparison. Uses the shared helper so
+	// scheduler auth, dashboard login and Blossom auth agree on the expected
+	// URL behind reverse proxies. (F8 fix)
+	fullURL := getRequestURL(r)
 
 	// Check u tag matches request URL (fix potential panic)
 	uTag := event.Tags.GetFirst([]string{"u", ""})

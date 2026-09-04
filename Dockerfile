@@ -70,8 +70,12 @@ if [ -d "/app/blossom" ] && [ "$(ls -A /app/blossom 2>/dev/null)" ]; then
     tar -czf "$BACKUP_DIR/blossom_backup_$TIMESTAMP.tar.gz" -C /app blossom/
 fi
 
-# Keep only last 5 backups
-find "$BACKUP_DIR" -name "*.tar.gz" -type f | sort -r | tail -n +6 | xargs -r rm
+# Keep last 5 backups per prefix. A single sort -r across all filenames
+# keeps only the alphabetically-largest prefix (db_* sorts after blossom_*),
+# so all media backups would be deleted. Apply retention separately.
+# (B5 fix)
+find "$BACKUP_DIR" -name "db_backup_*.tar.gz" -type f | sort -r | tail -n +6 | xargs -r rm
+find "$BACKUP_DIR" -name "blossom_backup_*.tar.gz" -type f | sort -r | tail -n +6 | xargs -r rm
 
 echo "Backup completed: $TIMESTAMP"
 EOF
@@ -113,11 +117,16 @@ COPY <<'EOF' /app/start.sh
 
 # Restore bundled public assets that are hidden by the Docker volume.
 # The volume mounts over /app/public, hiding all image-bundled files.
-# Copy any missing files from the preserved /app/public-original directory.
-# Never overwrite existing files — only fill in missing ones.
+# Two-step copy so that:
+#   - .well-known/ (user-managed nostr.json NIP-05 data) is only filled in
+#     when missing, never overwritten (cp -rn on the hidden directory).
+#   - All non-hidden dashboard assets (dashboard.html, js/, etc.) are
+#     overwritten so stale versions from a previous image do not persist
+#     across upgrades (cp -rf with a non-dot glob). (B10 fix)
 if [ -d '/app/public-original' ]; then
     echo 'Restoring bundled public assets...'
-    cp -rn /app/public-original/. /app/public/ 2>/dev/null || true
+    cp -rn /app/public-original/.well-known /app/public/ 2>/dev/null || true
+    cp -rf /app/public-original/* /app/public/ 2>/dev/null || true
     echo 'Bundled public assets restored'
 fi
 

@@ -10,12 +10,13 @@ docker:
 # Conditionally create volumes based on environment
 # These volumes are only created if the corresponding env vars are set
 volumes:
-  # Database volume (only created if DB_ENGINE=badger)
+  # Database volume. Always created so that auxiliary state stored under
+  # /app/db (scheduler posts, zap analytics cache) survives redeploy even
+  # when DB_ENGINE=postgresql. (B4 + F9 fix)
   - name: swarm-db
     mountPath: /app/db
     size: 1Gi
     type: persistent
-    condition: ${DB_ENGINE:-badger} == "badger"
     
   # Blossom file storage volume (only created if STORAGE_BACKEND=filesystem)
   - name: swarm-blossom
